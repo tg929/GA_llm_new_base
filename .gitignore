@@ -1,0 +1,10 @@
+output_*
+fragment_GPT
+mgltools_x86_64Linux2_1.5.6
+autogrow
+/data1/ytg/GA_llm_new/RunAutogrow.py
+*.smi
+*.pdbqt
+*.pkl
+*.txt
+*.pdb
