@@ -10,8 +10,9 @@ from functools import partial
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from operations.docking.docking_utils import DockingVina
 from rdkit import Chem
-
-# 设置项目根目录
+import pandas as pd
+from operations.scoring.eval import calculate_composite_score
+from fragment_GPT.utils.chem_utils import get_qed, get_sa
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 def setup_logging(output_dir, generation_num):
@@ -409,161 +410,142 @@ def run_analysis(input_file, output_prefix, gen_num, logger):
     logger.info(f"对接结果分析完成，结果保存至: {output_dir}/generation_{gen_num}_stats.txt")
     return f"{output_dir}/generation_{gen_num}_sorted.smi"
 
+def load_and_score_population(docked_file):
+    """
+    读取docked.smi,计算QED、SA,并用新评分函数打分。
+    返回DataFrame,包含smiles, DS, QED, SA, composite_score。
+    """
+    smiles_list = []
+    ds_list = []
+    with open(docked_file, 'r') as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                smiles_list.append(parts[0])
+                ds_list.append(float(parts[1]))
+    qed_list = []
+    sa_list = []
+    for smi in smiles_list:
+        mol = Chem.MolFromSmiles(smi)
+        if mol is not None:
+            qed = get_qed(mol)
+            sa = -(9*get_sa(mol)-10)
+        else:
+            qed = 0.0
+            sa = 0.0
+        qed_list.append(qed)
+        sa_list.append(sa)
+    df = pd.DataFrame({
+        'smiles': smiles_list,
+        'DS': ds_list,
+        'QED': qed_list,
+        'SA': sa_list
+    })
+    df = calculate_composite_score(df)
+    return df
+
 def calculate_and_print_stats(docking_output, generation_num, logger):    
-    molecules = []
-    scores = []
     try:
-        with open(docking_output, 'r') as f:
-            for line in f:
-                if line.strip():
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        molecules.append(parts[0])
-                        scores.append(float(parts[1]))
+        df = load_and_score_population(docking_output)
     except Exception as e:
         logger.error(f"读取对接结果文件失败: {str(e)}")
         return
-    
-    if not scores:
+    if df.empty:
         logger.warning("对接结果中没有发现有效分数")
         return       
-    sorted_scores = sorted(scores)    
-    
-    mean_score = np.mean(sorted_scores)
-    top1_score = sorted_scores[0] if len(sorted_scores) >= 1 else None
-    
-    # 计算top10均值
-    top10_scores = sorted_scores[:10] if len(sorted_scores) >= 10 else sorted_scores
-    top10_mean = np.mean(top10_scores)
-    # 计算top20均值
-    top20_scores = sorted_scores[:20] if len(sorted_scores) >= 20 else sorted_scores
-    top20_mean = np.mean(top20_scores)
-    # 计算top50均值
-    top50_scores = sorted_scores[:50] if len(sorted_scores) >= 50 else sorted_scores
-    top50_mean = np.mean(top50_scores)
-    # 计算top100均值
-    top100_scores = sorted_scores[:100] if len(sorted_scores) >= 100 else sorted_scores
-    top100_mean = np.mean(top100_scores)
-    
-    # 输出统计信息
-    stats_message = (
-        f"\n==================== Generation {generation_num} 统计信息 ====================\n"
-        f"总分子数: {len(scores)}\n"
-        f"所有分子得分均值: {mean_score:.4f}\n"
-        f"Top1得分: {top1_score:.4f}\n"
-        f"Top10得分均值: {top10_mean:.4f}\n"
-        f"Top20得分均值: {top20_mean:.4f}\n"
-        f"Top50得分均值: {top50_mean:.4f}\n"
-        f"Top100得分均值: {top100_mean:.4f}\n"
+    # 只输出一份原始DS统计
+    ds_sorted = df.sort_values(by='DS', ascending=True)  # DS越小越好
+    ds_mean = ds_sorted['DS'].mean()
+    ds_top1 = ds_sorted['DS'].iloc[0] if len(ds_sorted) >= 1 else None
+    ds_top10_mean = ds_sorted['DS'].iloc[:10].mean() if len(ds_sorted) >= 10 else ds_sorted['DS'].mean()
+    ds_top20_mean = ds_sorted['DS'].iloc[:20].mean() if len(ds_sorted) >= 20 else ds_sorted['DS'].mean()
+    ds_top50_mean = ds_sorted['DS'].iloc[:50].mean() if len(ds_sorted) >= 50 else ds_sorted['DS'].mean()
+    ds_top100_mean = ds_sorted['DS'].iloc[:100].mean() if len(ds_sorted) >= 100 else ds_sorted['DS'].mean()
+    ds_message = (
+        f"\n==================== Generation {generation_num} QVina对接分数统计 ====================\n"
+        f"总分子数: {len(ds_sorted)}\n"
+        f"所有分子DS均值: {ds_mean:.4f}\n"
+        f"Top1 DS: {ds_top1:.4f}\n"
+        f"Top10 DS均值: {ds_top10_mean:.4f}\n"
+        f"Top20 DS均值: {ds_top20_mean:.4f}\n"
+        f"Top50 DS均值: {ds_top50_mean:.4f}\n"
+        f"Top100 DS均值: {ds_top100_mean:.4f}\n"
         f"========================================================================\n"
-    )    
-    
-    logger.info(stats_message)    
-    
-    print(stats_message)
+    )
+    logger.info(ds_message)
+    print(ds_message)
+    # 生成QED SA composite_score文件，按composite_score降序排序
+    qed_sa_file = os.path.join(os.path.dirname(docking_output), f"generation_{generation_num}_qed_sa.smi")
+    df_sorted = df.sort_values(by='composite_score', ascending=False)
+    with open(qed_sa_file, 'w') as f:
+        for i, row in df_sorted.iterrows():
+            f.write(f"{row['smiles']}\t{row['QED']:.4f}\t{row['SA']:.4f}\t{row['composite_score']:.4f}\n")
+    logger.info(f"QED/SA/综合评分文件已保存: {qed_sa_file}")
 
 def select_seeds_for_next_generation(docking_output, seed_output, top_mols, diversity_mols, logger, elitism_mols=1, prev_elite_mols=None):
-    """基于适应度和多样性选择种子分子，支持精英保留机制"""
-    logger.info(f"开始选择种子分子: 从 {docking_output} 选择 {top_mols} 个适应度种子和 {diversity_mols} 个多样性种子，保留 {elitism_mols} 个精英分子")
-    
-    # 读取对接结果
-    molecules = []
-    scores = []
+    """基于综合评分选择种子分子，支持精英保留机制"""
+    logger.info(f"开始选择种子分子(综合评分): 从 {docking_output} 选择 {top_mols} 个适应度种子和 {diversity_mols} 个多样性种子，保留 {elitism_mols} 个精英分子")
     try:
-        with open(docking_output, 'r') as f:
-            for line in f:
-                if line.strip():
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        molecules.append(parts[0])
-                        scores.append(float(parts[1]))
+        df = load_and_score_population(docking_output)
     except Exception as e:
         logger.error(f"读取对接结果文件失败: {str(e)}")
         return None
-    
-    if not scores:
+    if df.empty:
         logger.warning("对接结果中没有发现有效分数")
         return None    
-   
-    sorted_indices = np.argsort(scores)
-    sorted_molecules = [molecules[i] for i in sorted_indices]
-    sorted_scores = [scores[i] for i in sorted_indices]    
-  
-    current_best_mol = sorted_molecules[0]
-    current_best_score = sorted_scores[0]    
-  
+    df_sorted = df.sort_values(by='composite_score', ascending=False)
+    current_best_mol = df_sorted.iloc[0]['smiles']
+    current_best_score = df_sorted.iloc[0]['composite_score']
     if prev_elite_mols:
         prev_best_mol = list(prev_elite_mols.keys())[0]
         prev_best_score = list(prev_elite_mols.values())[0]        
-      
-        if current_best_score < prev_best_score:
-            # 如果当前代有更好的分子，使用当前代的
+        if current_best_score > prev_best_score:
             new_elite_mols = {current_best_mol: current_best_score}
             logger.info(f"发现更好的分子，更新精英分子:")
             logger.info(f"上一代精英分子: {prev_best_mol} (得分: {prev_best_score})")
             logger.info(f"新的精英分子: {current_best_mol} (得分: {current_best_score})")
         else:
-            # 如果上一代的精英分子更好，继续保留
             new_elite_mols = {prev_best_mol: prev_best_score}
             logger.info(f"保留上一代精英分子:")
             logger.info(f"当前代最好分子: {current_best_mol} (得分: {current_best_score})")
             logger.info(f"保留的精英分子: {prev_best_mol} (得分: {prev_best_score})")
     else:
-        # 第一代，直接使用当前代最好的分子作为精英分子
         new_elite_mols = {current_best_mol: current_best_score}
         logger.info(f"第一代精英分子: {current_best_mol} (得分: {current_best_score})")
-    
     # 从剩余分子中选择适应度种子（排除已选择的精英分子）
-    remaining_molecules = [mol for mol in sorted_molecules if mol not in new_elite_mols]
-    fitness_seeds = remaining_molecules[:top_mols]
+    remaining_df = df_sorted[~df_sorted['smiles'].isin(new_elite_mols.keys())]
+    fitness_seeds = remaining_df.iloc[:top_mols]['smiles'].tolist()
     logger.info(f"已选择 {len(fitness_seeds)} 个适应度种子")
-    
-    # 选择多样性种子
+    # 选择多样性种子（此处仍可用原有字符串距离算法）
     diversity_seeds = []
-    remaining_molecules = remaining_molecules[top_mols:]
-    
-    if diversity_mols > 0 and remaining_molecules:
-        # 使用简单的最大最小距离算法选择多样性分子
+    remaining_smiles = remaining_df.iloc[top_mols:]['smiles'].tolist()
+    if diversity_mols > 0 and remaining_smiles:
+        import random
         selected_indices = []
-        # 从剩余分子中随机选择第一个
-        first_idx = np.random.randint(0, len(remaining_molecules))
+        first_idx = np.random.randint(0, len(remaining_smiles))
         selected_indices.append(first_idx)
-        diversity_seeds.append(remaining_molecules[first_idx])
-        
-        # 选择剩余的多样性分子
-        for _ in range(min(diversity_mols - 1, len(remaining_molecules) - 1)):
+        diversity_seeds.append(remaining_smiles[first_idx])
+        for _ in range(min(diversity_mols - 1, len(remaining_smiles) - 1)):
             max_min_dist = -1
             best_idx = -1
-            
-            for i in range(len(remaining_molecules)):
+            for i in range(len(remaining_smiles)):
                 if i in selected_indices:
                     continue
-                    
-                # 计算与已选分子的最小距离
                 min_dist = float('inf')
                 for j in selected_indices:
-                    # 使用简单的字符串相似度作为距离度量
-                    dist = sum(a != b for a, b in zip(remaining_molecules[i], remaining_molecules[j]))
+                    dist = sum(a != b for a, b in zip(remaining_smiles[i], remaining_smiles[j]))
                     min_dist = min(min_dist, dist)
-                
                 if min_dist > max_min_dist:
                     max_min_dist = min_dist
                     best_idx = i
-            
             if best_idx != -1:
                 selected_indices.append(best_idx)
-                diversity_seeds.append(remaining_molecules[best_idx])
-    
+                diversity_seeds.append(remaining_smiles[best_idx])
     logger.info(f"已选择 {len(diversity_seeds)} 个多样性种子")
-    
-    # 合并所有种子（精英分子 + 适应度种子 + 多样性种子）
     all_seeds = list(new_elite_mols.keys()) + fitness_seeds + diversity_seeds
-    
-    # 保存种子分子
     with open(seed_output, 'w') as f:
         for mol in all_seeds:
             f.write(f"{mol}\n")
-    
     logger.info(f"种子选择完成，共选择 {len(all_seeds)} 个分子，保存至: {seed_output}")
     return seed_output, new_elite_mols
 
@@ -883,7 +865,8 @@ def main():
         elite_mols = None
     
     # 执行后续5代进化
-    targets = ['fa7', 'parp1', '5ht1b', 'jak2', 'braf']
+    #targets = ['fa7', 'parp1', '5ht1b', 'jak2', 'braf']
+    targets = ['parp1']
 
     #targets = ['jak2', 'braf']  # 只保留未完成的两个受体
     for target in targets:

@@ -8,3 +8,7 @@ autogrow
 *.pkl
 *.txt
 *.pdb
+*.png
+*.gz
+*.pyc
+*.mol

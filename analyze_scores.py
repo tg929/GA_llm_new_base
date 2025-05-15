@@ -1,7 +1,7 @@
 import numpy as np
 
 # 读取文件内容
-with open('output_dockutils_runga_test0/5ht1b/generation_0_docking/docked_5ht1b.smi', 'r') as f:
+with open('/data1/ytg/GA_llm_new/output_dockutils_runga_test0/parp1/generation_5_docking/docked_parp1.smi', 'r') as f:
     lines = f.readlines()
 
 # 提取得分
