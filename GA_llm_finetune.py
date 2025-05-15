@@ -8,13 +8,14 @@ import subprocess
 import multiprocessing
 from functools import partial
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from operations.docking.docking_utils import DockingVina
+from rdkit import Chem
 
 # 设置项目根目录
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
-
-# 配置日志
 def setup_logging(output_dir, generation_num):
+    os.makedirs(output_dir, exist_ok=True)  
     log_file = os.path.join(output_dir, f"ga_evolution_{generation_num}.log")
     logging.basicConfig(
         level=logging.INFO,
@@ -26,21 +27,16 @@ def setup_logging(output_dir, generation_num):
     )
     return logging.getLogger("GA_llm_new")
 
-def run_decompose(input_file, output_prefix, logger):
-    """运行分子分解模块"""
-    logger.info(f"开始分子分解: {input_file}")
-    
-    # 准备输出目录
+def run_decompose(input_file, output_prefix, logger):    
+    logger.info(f"开始分子分解: {input_file}")    
     decompose_dir = os.path.join(PROJECT_ROOT, "datasets/decompose/decompose_results")
-    os.makedirs(decompose_dir, exist_ok=True)
-    
-    # 设置输出文件路径
+    os.makedirs(decompose_dir, exist_ok=True)    
+   
     output_file = os.path.join(decompose_dir, f"frags_result_{output_prefix}.smi")
     output_file2 = os.path.join(decompose_dir, f"frags_seq_{output_prefix}.smi")
     output_file3 = os.path.join(decompose_dir, f"truncated_frags_{output_prefix}.smi")
-    output_file4 = os.path.join(decompose_dir, f"decomposable_mols_{output_prefix}.smi")
-    
-    # 构建命令并执行
+    output_file4 = os.path.join(decompose_dir, f"decomposable_mols_{output_prefix}.smi")    
+   
     decompose_script = os.path.join(PROJECT_ROOT, "datasets/decompose/demo_frags.py")
     cmd = [
         "python", decompose_script,
@@ -60,18 +56,14 @@ def run_decompose(input_file, output_prefix, logger):
     logger.info(f"分子分解完成，生成文件: {output_file3}")
     return output_file3
 
-def run_gpt_generation(input_file, output_prefix, gen_num, logger):
-    """运行GPT生成新分子"""
-    logger.info(f"开始GPT生成: {input_file}")
+def run_gpt_generation(input_file, output_prefix, gen_num, logger):    
+    logger.info(f"开始GPT生成: {input_file}")    
     
-    # 准备输出目录
     output_dir = os.path.join(PROJECT_ROOT, "fragment_GPT/output")
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)    
+   
+    output_file = os.path.join(output_dir, f"crossovered{gen_num}_frags_new_{gen_num}.smi")    
     
-    # 设置输出文件路径
-    output_file = os.path.join(output_dir, f"crossovered{gen_num}_frags_new_{gen_num}.smi")
-    
-    # 构建命令并执行
     generate_script = os.path.join(PROJECT_ROOT, "fragment_GPT/generate_all.py")
     cmd = [
         "python", generate_script,
@@ -104,15 +96,12 @@ def run_gpt_generation(input_file, output_prefix, gen_num, logger):
     logger.info(f"GPT生成完成,输出文件: {output_file}")
     return output_file
 
-def run_crossover(source_file, llm_file, output_file, gen_num, num_crossovers, logger):
-    """运行分子交叉"""
-    logger.info(f"开始分子交叉: 源文件 {source_file}, LLM生成文件 {llm_file}, 交叉生成新个体数目 {num_crossovers}")
-    
-    # 准备输出目录
+def run_crossover(source_file, llm_file, output_file, gen_num, num_crossovers, logger):    
+    logger.info(f"开始分子交叉: 源文件 {source_file}, LLM生成文件 {llm_file}, 交叉生成新个体数目 {num_crossovers}")    
+   
     output_dir = os.path.dirname(output_file)
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)    
     
-    # 构建命令并执行
     crossover_script = os.path.join(PROJECT_ROOT, "operations/crossover/crossover_demo_finetune.py")
     cmd = [
         "python", crossover_script,
@@ -132,15 +121,12 @@ def run_crossover(source_file, llm_file, output_file, gen_num, num_crossovers, l
     logger.info(f"分子交叉完成，生成文件: {output_file}")
     return output_file
 
-def run_mutation(input_file, llm_file, output_file, num_mutations, logger):
-    """运行分子变异"""
-    logger.info(f"开始分子变异: 输入文件 {input_file}, LLM生成文件 {llm_file}, 变异生成新个体数目 {num_mutations}")
+def run_mutation(input_file, llm_file, output_file, num_mutations, logger):   
+    logger.info(f"开始分子变异: 输入文件 {input_file}, LLM生成文件 {llm_file}, 变异生成新个体数目 {num_mutations}")    
     
-    # 准备输出目录
     output_dir = os.path.dirname(output_file)
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)    
     
-    # 构建命令并执行
     mutation_script = os.path.join(PROJECT_ROOT, "operations/mutation/mutation_demo_finetune.py")
     cmd = [
         "python", mutation_script,
@@ -160,18 +146,14 @@ def run_mutation(input_file, llm_file, output_file, num_mutations, logger):
     logger.info(f"分子变异完成，生成文件: {output_file}")
     return output_file
 
-def run_filter(input_file, output_file, logger, args):
-    """运行分子过滤"""
-    logger.info(f"开始分子过滤: {input_file}")
+def run_filter(input_file, output_file, logger, args):   
+    logger.info(f"开始分子过滤: {input_file}")    
     
-    # 准备输出目录
     output_dir = os.path.dirname(output_file)
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # 构建过滤器参数列表
-    filter_params = []
-    
-    # 检查每个过滤器参数并添加到命令行
+    os.makedirs(output_dir, exist_ok=True)    
+   
+    filter_params = []    
+   
     if args.LipinskiStrictFilter:
         filter_params.extend(["--LipinskiStrictFilter"])
     if args.LipinskiLenientFilter:
@@ -191,26 +173,21 @@ def run_filter(input_file, output_file, logger, args):
     if args.BRENKFilter:
         filter_params.extend(["--BRENKFilter"])
     if args.No_Filters:
-        filter_params.extend(["--No_Filters"])
-    
-    # 添加自定义过滤器
+        filter_params.extend(["--No_Filters"])      
     if args.alternative_filter:
         for filter_entry in args.alternative_filter:
-            filter_params.extend(["--alternative_filter", filter_entry])
+            filter_params.extend(["--alternative_filter", filter_entry])  
     
-    # 如果没有指定任何过滤器，记录一条警告
     if not filter_params and not args.No_Filters:
-        logger.warning("没有指定任何过滤器参数，将使用默认过滤器")
-    
-    # 构建命令并执行
+        logger.warning("没有指定任何过滤器参数，将使用默认过滤器")   
+   
     filter_script = os.path.join(PROJECT_ROOT, "operations/filter/filter_demo.py")
     cmd = [
         "python", filter_script,
         "--input", input_file,
         "--output", output_file
-    ]
+    ]  
     
-    # 添加过滤器参数
     cmd.extend(filter_params)
     
     logger.info(f"执行过滤命令: {' '.join(cmd)}")
@@ -223,18 +200,15 @@ def run_filter(input_file, output_file, logger, args):
     logger.info(f"分子过滤完成，生成文件: {output_file}")
     return output_file
 
-def dock_molecule(mol_idx, mol_smiles, args, temp_dir, logger):
-    """对单个分子进行对接"""
+def dock_molecule(mol_idx, mol_smiles, args, temp_dir, logger):   
     try:
-        # 创建临时文件
+        # 临时文件
         temp_input = os.path.join(temp_dir, f"temp_input_{mol_idx}.smi")
-        temp_output = os.path.join(temp_dir, f"temp_output_{mol_idx}.smi")
-        
-        # 写入分子到临时文件
+        temp_output = os.path.join(temp_dir, f"temp_output_{mol_idx}.smi")        
+       
         with open(temp_input, 'w') as f:
-            f.write(mol_smiles)
-        
-        # 构建对接命令
+            f.write(mol_smiles)        
+       
         docking_script = os.path.join(PROJECT_ROOT, "operations/docking/docking_demo.py")
         cmd = [
             "python", docking_script,
@@ -243,16 +217,14 @@ def dock_molecule(mol_idx, mol_smiles, args, temp_dir, logger):
             "-o", temp_output,
             "-m", args.mgltools_path,
             "--max_failures", "5"
-        ]
-        
-        # 执行对接
+        ]       
+       
         process = subprocess.run(cmd, capture_output=True, text=True)
         
         if process.returncode != 0:
             logger.warning(f"分子 {mol_idx} 对接失败: {process.stderr}")
-            return None
-        
-        # 读取对接结果
+            return None       
+       
         if os.path.exists(temp_output):
             with open(temp_output, 'r') as f:
                 result = f.read().strip()
@@ -264,8 +236,7 @@ def dock_molecule(mol_idx, mol_smiles, args, temp_dir, logger):
     except Exception as e:
         logger.error(f"分子 {mol_idx} 对接过程出错: {str(e)}")
         return None
-    finally:
-        # 清理临时文件
+    finally:        
         try:
             if os.path.exists(temp_input):
                 os.remove(temp_input)
@@ -276,24 +247,20 @@ def dock_molecule(mol_idx, mol_smiles, args, temp_dir, logger):
 
 def run_docking(input_file, output_file, receptor_file, mgltools_path, logger, num_processors=1, multithread_mode="serial"):
     """运行分子对接，支持并行处理"""
-    logger.info(f"开始分子对接: {input_file}, 处理器数量: {num_processors}, 模式: {multithread_mode}")
+    logger.info(f"开始分子对接: {input_file}, 处理器数量: {num_processors}, 模式: {multithread_mode}")  
     
-    # 准备输出目录
     output_dir = os.path.dirname(output_file)
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # 确定处理器数量 - 如果为-1或大于可用CPU数量，则使用所有可用CPU
+    os.makedirs(output_dir, exist_ok=True)   
+   
     available_cpus = multiprocessing.cpu_count()
     if num_processors == -1 or num_processors > available_cpus:
         num_processors = available_cpus
-        logger.info(f"自动设置使用所有可用的CPU核心: {num_processors}")
+        logger.info(f"自动设置使用所有可用的CPU核心: {num_processors}")    
     
-    # 根据处理器数量自动选择并行模式
     if num_processors > 1 and multithread_mode == "serial":
         logger.info(f"检测到使用多核({num_processors})但模式为serial,自动切换为multithreading模式")
-        multithread_mode = "multithreading"
-        
-    # 如果选择串行模式或只使用一个处理器，使用原始的对接方法
+        multithread_mode = "multithreading"       
+   
     if multithread_mode == "serial" or num_processors == 1:
         logger.info("使用串行模式进行对接")
         docking_script = os.path.join(PROJECT_ROOT, "operations/docking/docking_demo.py")
@@ -313,23 +280,21 @@ def run_docking(input_file, output_file, receptor_file, mgltools_path, logger, n
             raise Exception("分子对接失败")
         
         logger.info(f"分子对接完成，生成文件: {output_file}")
-        return output_file
+        return output_file    
     
-    # 并行处理
-    logger.info(f"使用并行模式进行对接，处理器数量: {num_processors}")
-    
-    # 读取输入文件中的分子
+    logger.info(f"使用并行模式进行对接，处理器数量: {num_processors}")   
+   
     with open(input_file, 'r') as f:
         molecules = [line for line in f.readlines() if line.strip()]
     
     total_molecules = len(molecules)
     logger.info(f"共有 {total_molecules} 个分子需要对接")
     
-    # 创建临时目录存放分割后的文件
+    # 临时目录存放分割后的文件
     temp_dir = os.path.join(output_dir, "temp_docking")
     os.makedirs(temp_dir, exist_ok=True)
     
-    # 设置工作函数参数
+   
     dock_func = partial(dock_molecule, args=argparse.Namespace(
         receptor_file=receptor_file,
         mgltools_path=mgltools_path
@@ -340,12 +305,10 @@ def run_docking(input_file, output_file, receptor_file, mgltools_path, logger, n
     
     # 并行执行对接
     results = []
-    start_time = time.time()
+    start_time = time.time()   
     
-    # 优化：根据分子数量和处理器数量自动调整最优的批处理大小
-    batch_size = max(1, min(100, molecules_per_processor))
-    
-    # 分子任务分组，优化负载均衡
+    batch_size = max(1, min(100, molecules_per_processor))    
+   
     molecule_batches = []
     for i in range(0, total_molecules, batch_size):
         end = min(i + batch_size, total_molecules)
@@ -357,14 +320,13 @@ def run_docking(input_file, output_file, receptor_file, mgltools_path, logger, n
     if multithread_mode == "multithreading":
         logger.info(f"使用多线程模式，线程数: {num_processors}")
         with ThreadPoolExecutor(max_workers=num_processors) as executor:
-            # 批量提交任务，改善负载均衡
+           
             future_to_idx = {}
             for batch_idx, (start_idx, batch) in enumerate(molecule_batches):
                 for mol_idx, mol in enumerate(batch):
                     future = executor.submit(dock_func, start_idx + mol_idx, mol)
-                    future_to_idx[future] = start_idx + mol_idx
-            
-            # 处理结果时显示进度
+                    future_to_idx[future] = start_idx + mol_idx           
+           
             completed = 0
             successful = 0
             for future in as_completed(future_to_idx):
@@ -372,28 +334,25 @@ def run_docking(input_file, output_file, receptor_file, mgltools_path, logger, n
                 completed += 1
                 if result:
                     results.append(result)
-                    successful += 1
-                
-                # 定期更新进度信息
+                    successful += 1               
+               
                 if completed % max(1, total_molecules // 20) == 0 or completed == total_molecules:
                     elapsed = time.time() - start_time
                     remaining = (elapsed / completed) * (total_molecules - completed) if completed > 0 else 0
                     logger.info(f"已完成: {completed}/{total_molecules} ({completed/total_molecules*100:.1f}%), "
                                f"成功: {successful}/{completed} ({successful/completed*100:.1f}% 成功率), "
                                f"耗时: {elapsed:.1f}秒, 预计剩余: {remaining:.1f}秒")
-    else:  # 多进程模式
-        logger.info(f"使用多进程模式，进程数: {num_processors}")
-        # 使用spawn上下文避免潜在的内存泄漏问题
+    else:  
+        logger.info(f"使用多进程模式，进程数: {num_processors}")        
         mp_context = multiprocessing.get_context('spawn')
         with ProcessPoolExecutor(max_workers=num_processors, mp_context=mp_context) as executor:
-            # 批量提交任务
+           
             future_to_idx = {}
             for batch_idx, (start_idx, batch) in enumerate(molecule_batches):
                 for mol_idx, mol in enumerate(batch):
                     future = executor.submit(dock_func, start_idx + mol_idx, mol)
-                    future_to_idx[future] = start_idx + mol_idx
-            
-            # 处理结果时显示进度
+                    future_to_idx[future] = start_idx + mol_idx        
+          
             completed = 0
             successful = 0
             for future in as_completed(future_to_idx):
@@ -401,9 +360,8 @@ def run_docking(input_file, output_file, receptor_file, mgltools_path, logger, n
                 completed += 1
                 if result:
                     results.append(result)
-                    successful += 1
-                
-                # 定期更新进度信息
+                    successful += 1               
+               
                 if completed % max(1, total_molecules // 20) == 0 or completed == total_molecules:
                     elapsed = time.time() - start_time
                     remaining = (elapsed / completed) * (total_molecules - completed) if completed > 0 else 0
@@ -415,9 +373,8 @@ def run_docking(input_file, output_file, receptor_file, mgltools_path, logger, n
     total_time = end_time - start_time
     logger.info(f"对接计算完成，总耗时: {total_time:.2f}秒，"
                f"平均每个分子: {total_time/total_molecules:.2f}秒，"
-               f"总成功率: {len(results)/total_molecules*100:.1f}%")
+               f"总成功率: {len(results)/total_molecules*100:.1f}%")   
     
-    # 合并结果到输出文件
     with open(output_file, 'w') as f:
         for result in results:
             f.write(result + '\n')
@@ -430,14 +387,11 @@ def run_docking(input_file, output_file, receptor_file, mgltools_path, logger, n
     
     return output_file
 
-def run_analysis(input_file, output_prefix, gen_num, logger):
-    """运行对接结果分析"""
-    logger.info(f"开始对接结果分析: {input_file}")
+def run_analysis(input_file, output_prefix, gen_num, logger):   
+    logger.info(f"开始对接结果分析: {input_file}")    
+   
+    output_dir = os.path.dirname(input_file)   
     
-    # 准备输出目录
-    output_dir = os.path.dirname(input_file)
-    
-    # 构建命令并执行
     analysis_script = os.path.join(PROJECT_ROOT, "operations/docking/analyse_result_0.py")
     cmd = [
         "python", analysis_script,
@@ -455,9 +409,7 @@ def run_analysis(input_file, output_prefix, gen_num, logger):
     logger.info(f"对接结果分析完成，结果保存至: {output_dir}/generation_{gen_num}_stats.txt")
     return f"{output_dir}/generation_{gen_num}_sorted.smi"
 
-def calculate_and_print_stats(docking_output, generation_num, logger):
-    """计算并输出当前种群的分数统计信息"""
-    # 读取对接结果文件中的分数
+def calculate_and_print_stats(docking_output, generation_num, logger):    
     molecules = []
     scores = []
     try:
@@ -474,12 +426,9 @@ def calculate_and_print_stats(docking_output, generation_num, logger):
     
     if not scores:
         logger.warning("对接结果中没有发现有效分数")
-        return
+        return       
+    sorted_scores = sorted(scores)    
     
-    # 将分数从小到大排序（对接分数越小越好）
-    sorted_scores = sorted(scores)
-    
-    # 计算统计信息
     mean_score = np.mean(sorted_scores)
     top1_score = sorted_scores[0] if len(sorted_scores) >= 1 else None
     
@@ -507,12 +456,10 @@ def calculate_and_print_stats(docking_output, generation_num, logger):
         f"Top50得分均值: {top50_mean:.4f}\n"
         f"Top100得分均值: {top100_mean:.4f}\n"
         f"========================================================================\n"
-    )
+    )    
     
-    # 输出到日志
-    logger.info(stats_message)
+    logger.info(stats_message)    
     
-    # 输出到控制台
     print(stats_message)
 
 def select_seeds_for_next_generation(docking_output, seed_output, top_mols, diversity_mols, logger, elitism_mols=1, prev_elite_mols=None):
@@ -536,23 +483,19 @@ def select_seeds_for_next_generation(docking_output, seed_output, top_mols, dive
     
     if not scores:
         logger.warning("对接结果中没有发现有效分数")
-        return None
-    
-    # 按分数排序（对接分数越小越好）
+        return None    
+   
     sorted_indices = np.argsort(scores)
     sorted_molecules = [molecules[i] for i in sorted_indices]
-    sorted_scores = [scores[i] for i in sorted_indices]
-    
-    # 获取当前代得分最好的分子
+    sorted_scores = [scores[i] for i in sorted_indices]    
+  
     current_best_mol = sorted_molecules[0]
-    current_best_score = sorted_scores[0]
-    
-    # 如果有上一代的精英分子，比较并选择最好的
+    current_best_score = sorted_scores[0]    
+  
     if prev_elite_mols:
         prev_best_mol = list(prev_elite_mols.keys())[0]
-        prev_best_score = list(prev_elite_mols.values())[0]
-        
-        # 比较当前代最好分子和上一代精英分子
+        prev_best_score = list(prev_elite_mols.values())[0]        
+      
         if current_best_score < prev_best_score:
             # 如果当前代有更好的分子，使用当前代的
             new_elite_mols = {current_best_mol: current_best_score}
@@ -623,6 +566,64 @@ def select_seeds_for_next_generation(docking_output, seed_output, top_mols, dive
     
     logger.info(f"种子选择完成，共选择 {len(all_seeds)} 个分子，保存至: {seed_output}")
     return seed_output, new_elite_mols
+
+def run_docking_qvina(input_file, output_dir, targets, logger):
+    """调用docking_utils_demo.py进行多受体qvina02对接"""
+    logger.info(f"开始qvina02多受体对接: {input_file} -> {output_dir} (受体: {targets})")
+    
+    # 添加SMILES格式验证和过滤
+    filtered_file = os.path.join(output_dir, "filtered_input.smi")
+    valid_molecules = []
+    
+    with open(input_file, 'r') as f:
+        for line in f:
+            smiles = line.strip()
+            if not smiles:
+                continue
+                
+            # 检查是否包含*号
+            if '*' in smiles:
+                logger.warning(f"跳过包含*号的SMILES: {smiles}")
+                continue
+                
+            # 尝试转换为RDKit分子对象
+            try:
+                mol = Chem.MolFromSmiles(smiles)
+                if mol is not None:
+                    valid_molecules.append(smiles)
+                else:
+                    logger.warning(f"无效的SMILES字符串: {smiles}")
+            except Exception as e:
+                logger.warning(f"处理SMILES时出错: {smiles}, 错误: {str(e)}")
+    
+    # 保存过滤后的分子
+    with open(filtered_file, 'w') as f:
+        for smiles in valid_molecules:
+            f.write(f"{smiles}\n")
+    
+    logger.info(f"SMILES过滤完成: 原始分子数 {sum(1 for _ in open(input_file))}, 有效分子数 {len(valid_molecules)}")
+    
+    # 使用过滤后的文件进行对接
+    script_path = os.path.join(PROJECT_ROOT, "operations/docking/docking_utils_demo.py")
+    cmd = [
+        "python", script_path,
+        "-i", filtered_file,
+        "-o", output_dir,
+        "--targets"
+    ] + targets
+    
+    process = subprocess.run(cmd, capture_output=True, text=True)
+    if process.returncode != 0:
+        logger.error(f"qvina02多受体对接失败: {process.stderr}")
+        raise Exception("qvina02多受体对接失败")
+    
+    logger.info(f"qvina02多受体对接完成, 结果目录: {output_dir}")
+    
+    # 清理临时文件
+    if os.path.exists(filtered_file):
+        os.remove(filtered_file)
+    
+    return [os.path.join(output_dir, f"docked_{t}.smi") for t in targets]
 
 def run_evolution(generation_num, args, logger, prev_elite_mols=None):
     """执行一次完整的进化迭代，支持精英保留机制"""
@@ -707,7 +708,7 @@ def run_evolution(generation_num, args, logger, prev_elite_mols=None):
                 # 直接追加精英分子及其分数
                 with open(docking_output, 'a') as f:
                     f.write(f"{elite_smiles}\t{elite_score:.4f}\n")
-                logger.info(f"精英分子未在docked.smi中，已直接追加: {elite_smiles} (得分: {elite_score})")
+                logger.info(f"精英分子未在docked.smi中,已直接追加: {elite_smiles} (得分: {elite_score})")
 
         calculate_and_print_stats(docking_output, generation_num, logger)
         
@@ -738,7 +739,7 @@ def run_evolution(generation_num, args, logger, prev_elite_mols=None):
             elite_smiles, elite_score = list(prev_elite_mols.items())[0]
             if current_best_score is not None and current_best_score < elite_score:
                 new_elite_mols = {current_best_mol: current_best_score}
-                logger.info(f"新一代top1更优，更新精英分子: {current_best_mol} (得分: {current_best_score})")
+                logger.info(f"新一代top1更优,更新精英分子: {current_best_mol} (得分: {current_best_score})")
             else:
                 new_elite_mols = {elite_smiles: elite_score}
                 logger.info(f"继续保留上一代精英分子: {elite_smiles} (得分: {elite_score})")
@@ -762,25 +763,20 @@ def run_evolution(generation_num, args, logger, prev_elite_mols=None):
         return seed_output, new_elite_mols
 
 def main():
-    # 解析命令行参数
-    parser = argparse.ArgumentParser(description='GA_llm - 分子进化与生成流程')
     
-    # 基本参数
+    parser = argparse.ArgumentParser(description='GA_llm - 多受体分子进化与生成流程')    
+   
     parser.add_argument('--generations', type=int, default=5, 
                         help='进化代数(不包括第0代,总共会生成6代:generation_0到generation_5)')
     parser.add_argument('--output_dir', type=str, default=os.path.join(PROJECT_ROOT, 'output'),
                         help='输出目录')
     parser.add_argument('--initial_population', type=str, 
-                        default=os.path.join(PROJECT_ROOT, 'datasets/source_compounds/naphthalene_smiles.smi'),
-                        help='初始种群文件路径')
+                        default=os.path.join(PROJECT_ROOT, 'datasets/source_compounds/naphthalene_smiles.smi'))   
     
-    # 对接参数
     parser.add_argument('--receptor_file', type=str,
-                        default=os.path.join(PROJECT_ROOT, 'tutorial/PARP/4r6eA_PARP1_prepared.pdb'),
-                        help='受体PDB文件路径')
+                        default=os.path.join(PROJECT_ROOT, 'tutorial/PARP/4r6eA_PARP1_prepared.pdb'))
     parser.add_argument('--mgltools_path', type=str,
-                        default=os.path.join(PROJECT_ROOT, 'mgltools_x86_64Linux2_1.5.6'),
-                        help='MGLTools安装路径')
+                        default=os.path.join(PROJECT_ROOT, 'mgltools_x86_64Linux2_1.5.6'))
     
     # 进化参数
     parser.add_argument('--num_crossovers', type=int, default=50)
@@ -836,9 +832,8 @@ def main():
     args = parser.parse_args()
     
     # 创建输出目录
-    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(args.output_dir, exist_ok=True)    
     
-    # 如果number_of_processors为-1，不在此处设置具体值，而是在run_docking函数中动态设置
     if args.number_of_processors == -1:
         print(f"将使用动态检测的CPU数量,在每次对接时自动设置")
     else:
@@ -847,22 +842,20 @@ def main():
             print(f"指定的处理器数量({args.number_of_processors})超过系统可用CPU数量({available_cpus})，将使用所有可用CPU")
             args.number_of_processors = available_cpus
         else:
-            print(f"将使用指定的{args.number_of_processors}个CPU进行计算")
+            print(f"将使用指定的{args.number_of_processors}个CPU进行计算")    
     
-    # 如果使用多核但未指定多线程模式，自动切换为multithreading模式
     if args.number_of_processors != 1 and args.multithread_mode == "serial":
         print(f"检测到可能使用多核但模式为serial,自动切换为multithreading模式")
-        args.multithread_mode = "multithreading"
-    
-    # 如果设置了种群大小限制，检查初始种群
-    if args.max_population > 0:
-        # 检查初始种群大小
-        with open(args.initial_population, 'r') as f:
-            initial_count = sum(1 for line in f if line.strip())
-        if initial_count > args.max_population:
-            limited_file = os.path.join(args.output_dir, "limited_initial_population.smi")
-            args.initial_population = limit_population_size(args.initial_population, args.max_population, limited_file)
-            print(f"初始种群已从{initial_count}限制为{args.max_population}")
+        args.multithread_mode = "multithreading"    
+   
+    # if args.max_population > 0:
+    #     # 检查初始种群大小
+    #     with open(args.initial_population, 'r') as f:
+    #         initial_count = sum(1 for line in f if line.strip())
+    #     if initial_count > args.max_population:
+    #         limited_file = os.path.join(args.output_dir, "limited_initial_population.smi")
+    #         args.initial_population = limit_population_size(args.initial_population, args.max_population, limited_file)
+    #         print(f"初始种群已从{initial_count}限制为{args.max_population}")
     
     # 执行多代进化
     # 先运行第0代（进行交叉和变异操作后再对接）
@@ -890,31 +883,125 @@ def main():
         elite_mols = None
     
     # 执行后续5代进化
-    for gen in range(1, args.generations + 1):
-        logger = setup_logging(args.output_dir, gen)
-        try:
-            logger.info(f"开始第 {gen} 代进化")
+    targets = ['fa7', 'parp1', '5ht1b', 'jak2', 'braf']
+
+    #targets = ['jak2', 'braf']  # 只保留未完成的两个受体
+    for target in targets:
+        logger = setup_logging(os.path.join(args.output_dir, target), 0)
+        logger.info(f"==== 开始受体 {target} 的进化优化 ====")
+        # 受体相关输出目录
+        output_base = os.path.join(args.output_dir, target)
+        os.makedirs(output_base, exist_ok=True)
+        # 初始化精英分子
+        elite_mols = None
+        for gen in range(args.generations + 1):
+            logger = setup_logging(output_base, gen)
+            logger.info(f"开始第 {gen} 代进化 (受体: {target})")
             start_time = time.time()
-            
-            # 如果前一代种群存在且超过限制大小，先限制它
-            if args.max_population > 0:
-                prev_gen_file = os.path.join(args.output_dir, f"generation_{gen-1}", f"generation_{gen-1}_docked.smi")
-                if os.path.exists(prev_gen_file):
-                    with open(prev_gen_file, 'r') as f:
-                        prev_count = sum(1 for line in f if line.strip())
-                    if prev_count > args.max_population:
-                        limit_population_size(prev_gen_file, args.max_population)
-                        logger.info(f"第{gen-1}代种群已从{prev_count}限制为{args.max_population}")
-            
-            final_output, elite_mols = run_evolution(gen, args, logger, elite_mols)
-            
+            # 文件名都带target
+            if gen == 0:
+                current_population = args.initial_population
+                docking_output_dir = os.path.join(output_base, f"generation_{gen}_docking")
+                os.makedirs(docking_output_dir, exist_ok=True)
+                docked_files = run_docking_qvina(current_population, docking_output_dir, [target], logger)
+                docking_output = docked_files[0]
+                calculate_and_print_stats(docking_output, gen, logger)
+                diversity_mols = max(0, args.diversity_mols_to_seed_first_generation - (gen * args.diversity_seed_depreciation_per_gen))
+                seed_output = os.path.join(output_base, f"generation_{gen}_seeds_{target}.smi")
+                seed_output, elite_mols = select_seeds_for_next_generation(
+                    docking_output, seed_output, args.top_mols_to_seed_next_generation, 
+                    diversity_mols, logger, args.elitism_mols_to_next_generation
+                )
+            else:
+                prev_seed_file = os.path.join(output_base, f"generation_{gen-1}_seeds_{target}.smi")
+                non_elite_molecules = []
+                with open(prev_seed_file, 'r') as f:
+                    for line in f:
+                        mol = line.strip()
+                        if mol and (elite_mols is None or mol not in elite_mols):
+                            non_elite_molecules.append(mol)
+                temp_seed_file = os.path.join(output_base, f"temp_non_elite_seeds_{target}.smi")
+                with open(temp_seed_file, 'w') as f:
+                    for mol in non_elite_molecules:
+                        f.write(f"{mol}\n")
+                decompose_output = run_decompose(temp_seed_file, f"gen{gen}_seed_{target}", logger)
+                gpt_output = run_gpt_generation(decompose_output, f"gen{gen}_seed_{target}", gen, logger)
+                crossover_output = os.path.join(output_base, f"generation_{gen}_crossover_{target}.smi")
+                run_crossover(temp_seed_file, gpt_output, crossover_output, gen, args.num_crossovers, logger)
+                mutation_output = os.path.join(output_base, f"generation_{gen}_mutation_{target}.smi")
+                run_mutation(temp_seed_file, gpt_output, mutation_output, args.num_mutations, logger)
+                new_population_file = os.path.join(output_base, f"generation_{gen}_new_population_{target}.smi")
+                with open(new_population_file, 'w') as fout:
+                    if elite_mols:
+                        for mol, score in elite_mols.items():
+                            fout.write(f"{mol}\n")
+                        logger.info(f"已将上一代精英分子 {list(elite_mols.keys())[0]} (得分: {list(elite_mols.values())[0]}) 加入新种群")
+                    for fname in [crossover_output, mutation_output]:
+                        with open(fname, 'r') as fin:
+                            for line in fin:
+                                if line.strip():
+                                    fout.write(line)
+                docking_output_dir = os.path.join(output_base, f"generation_{gen}_docking")
+                os.makedirs(docking_output_dir, exist_ok=True)
+                docked_files = run_docking_qvina(new_population_file, docking_output_dir, [target], logger)
+                docking_output = docked_files[0]
+                # === 精英分子直接保留到docked.smi中 ===
+                if elite_mols:
+                    elite_smiles, elite_score = list(elite_mols.items())[0]
+                    found = False
+                    with open(docking_output, 'r') as f:
+                        for line in f:
+                            parts = line.strip().split()
+                            if len(parts) >= 2 and parts[0] == elite_smiles:
+                                found = True
+                                break
+                    if not found:
+                        with open(docking_output, 'a') as f:
+                            f.write(f"{elite_smiles}\t{elite_score:.4f}\n")
+                        logger.info(f"精英分子未在docked.smi中,已直接追加: {elite_smiles} (得分: {elite_score})")
+                calculate_and_print_stats(docking_output, gen, logger)
+                diversity_mols = max(0, args.diversity_mols_to_seed_first_generation - (gen * args.diversity_seed_depreciation_per_gen))
+                seed_output = os.path.join(output_base, f"generation_{gen}_seeds_{target}.smi")
+                molecules, scores = [], []
+                with open(docking_output, 'r') as f:
+                    for line in f:
+                        parts = line.strip().split()
+                        if len(parts) >= 2:
+                            molecules.append(parts[0])
+                            scores.append(float(parts[1]))
+                if scores:
+                    sorted_indices = np.argsort(scores)
+                    sorted_molecules = [molecules[i] for i in sorted_indices]
+                    sorted_scores = [scores[i] for i in sorted_indices]
+                    current_best_mol = sorted_molecules[0]
+                    current_best_score = sorted_scores[0]
+                else:
+                    current_best_mol = None
+                    current_best_score = None
+                if elite_mols:
+                    elite_smiles, elite_score = list(elite_mols.items())[0]
+                    if current_best_score is not None and current_best_score < elite_score:
+                        new_elite_mols = {current_best_mol: current_best_score}
+                        logger.info(f"新一代top1更优,更新精英分子: {current_best_mol} (得分: {current_best_score})")
+                    else:
+                        new_elite_mols = {elite_smiles: elite_score}
+                        logger.info(f"继续保留上一代精英分子: {elite_smiles} (得分: {elite_score})")
+                else:
+                    if current_best_mol is not None:
+                        new_elite_mols = {current_best_mol: current_best_score}
+                        logger.info(f"第一代精英分子: {current_best_mol} (得分: {current_best_score})")
+                    else:
+                        new_elite_mols = None
+                seed_output, elite_mols = select_seeds_for_next_generation(
+                    docking_output, seed_output, args.top_mols_to_seed_next_generation, 
+                    diversity_mols, logger, args.elitism_mols_to_next_generation, new_elite_mols
+                )
+                if os.path.exists(temp_seed_file):
+                    os.remove(temp_seed_file)
             end_time = time.time()
-            logger.info(f"第 {gen} 代进化完成，耗时: {end_time - start_time:.2f}秒")
-            logger.info(f"结果保存至: {final_output}")
-            
-        except Exception as e:
-            logger.error(f"第 {gen} 代进化失败: {str(e)}")
-            break
+            logger.info(f"第 {gen} 代进化完成,耗时: {end_time - start_time:.2f}秒")
+            logger.info(f"结果保存至: {output_base}")
+        logger.info(f"==== 受体 {target} 的进化优化全部完成 ====")
 
 if __name__ == "__main__":
     main()
