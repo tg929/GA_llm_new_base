@@ -840,33 +840,33 @@ def main():
     #         print(f"初始种群已从{initial_count}限制为{args.max_population}")
     
     # 执行多代进化
-    # 先运行第0代（进行交叉和变异操作后再对接）
-    logger = setup_logging(args.output_dir, 0)
-    try:
-        # 确定第0代使用的交叉变异生成新分子数目
-        if args.number_of_crossovers_first_generation is None:
-            args.number_of_crossovers_first_generation = args.num_crossovers
-            logger.info(f"第0代交叉生成新个体数未指定,使用默认值: {args.num_crossovers}")
+    # # 先运行第0代（进行交叉和变异操作后再对接）
+    # logger = setup_logging(args.output_dir, 0)
+    # try:
+    #     # 确定第0代使用的交叉变异生成新分子数目
+    #     if args.number_of_crossovers_first_generation is None:
+    #         args.number_of_crossovers_first_generation = args.num_crossovers
+    #         logger.info(f"第0代交叉生成新个体数未指定,使用默认值: {args.num_crossovers}")
         
-        if args.number_of_mutants_first_generation is None:
-            args.number_of_mutants_first_generation = args.num_mutations
-            logger.info(f"第0代变异生成新个体数未指定,使用默认值: {args.num_mutations}")
+    #     if args.number_of_mutants_first_generation is None:
+    #         args.number_of_mutants_first_generation = args.num_mutations
+    #         logger.info(f"第0代变异生成新个体数未指定,使用默认值: {args.num_mutations}")
             
-        logger.info(f"开始第0代(对初始种群进行交叉变异后对接)")
-        logger.info(f"第0代将通过交叉生成 {args.number_of_crossovers_first_generation} 个新分子和 通过变异生成{args.number_of_mutants_first_generation} 个新分子")
-        start_time = time.time()
+    #     logger.info(f"开始第0代(对初始种群进行交叉变异后对接)")
+    #     logger.info(f"第0代将通过交叉生成 {args.number_of_crossovers_first_generation} 个新分子和 通过变异生成{args.number_of_mutants_first_generation} 个新分子")
+    #     start_time = time.time()
         
-        final_output, elite_mols = run_evolution(0, args, logger)
+    #     final_output, elite_mols = run_evolution(0, args, logger)
         
-        end_time = time.time()
-        logger.info(f"第0代完成,耗时: {end_time - start_time:.2f}秒")
-    except Exception as e:
-        logger.error(f"第0代失败: {str(e)}")
-        elite_mols = None
+    #     end_time = time.time()
+    #     logger.info(f"第0代完成,耗时: {end_time - start_time:.2f}秒")
+    # except Exception as e:
+    #     logger.error(f"第0代失败: {str(e)}")
+    #     elite_mols = None
     
     # 执行后续5代进化
-    #targets = ['fa7', 'parp1', '5ht1b', 'jak2', 'braf']
-    targets = ['parp1']
+    targets = ['fa7', 'parp1', '5ht1b', 'jak2', 'braf']
+    #targets = ['parp1']
 
     #targets = ['jak2', 'braf']  # 只保留未完成的两个受体
     for target in targets:
